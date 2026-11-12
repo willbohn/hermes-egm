@@ -94,3 +94,39 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         result = json.loads(await ctx.tools["egm_review"]["handler"]({"target": "absent"}))
         self.assertEqual(result["status"], "invalid_input")
         self.assertEqual(ctx.llm.calls, [])
+
+    async def _run_one_lens(self, settings):
+        plugin = importlib.import_module("hermes_egm.plugin")
+        ctx = Context(settings=settings)
+        plugin.register(ctx)
+        result = json.loads(
+            await ctx.tools["egm_review"]["handler"](
+                {
+                    "target": "spec",
+                    "documents": [{"id": "spec", "text": "Review this design."}],
+                    "lenses": ["design"],
+                }
+            )
+        )
+        self.assertEqual(result["status"], "complete")
+        return ctx.llm.calls
+
+    async def test_review_timeout_setting_reaches_reviewer_requests(self):
+        calls = await self._run_one_lens({"review_timeout_seconds": 600})
+        self.assertEqual([call["timeout"] for call in calls], [600.0])
+
+    async def test_invalid_review_timeout_falls_back_to_ninety_seconds(self):
+        for bad in (0, 5, 99999, "600", True, None):
+            with self.subTest(value=bad):
+                calls = await self._run_one_lens({"review_timeout_seconds": bad})
+                self.assertEqual([call["timeout"] for call in calls], [90.0])
+
+    async def test_review_max_tokens_setting_reaches_reviewer_requests(self):
+        calls = await self._run_one_lens({"review_max_tokens": 8192})
+        self.assertEqual([call["max_tokens"] for call in calls], [8192])
+
+    async def test_invalid_review_max_tokens_falls_back_to_2400(self):
+        for bad in (0, 100, 99999, "8192", True, None):
+            with self.subTest(value=bad):
+                calls = await self._run_one_lens({"review_max_tokens": bad})
+                self.assertEqual([call["max_tokens"] for call in calls], [2400])

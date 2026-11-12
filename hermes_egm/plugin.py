@@ -118,6 +118,36 @@ def read_policy(ctx: PluginContext) -> ActivationPolicy:
     )
 
 
+_DEFAULT_REVIEW_TIMEOUT_SECONDS = 90
+
+_DEFAULT_REVIEW_MAX_TOKENS = 2400
+
+
+def read_review_timeout(ctx: PluginContext) -> float:
+    """Per-reviewer provider timeout; an invalid setting falls back to the default.
+
+    The timeout is always passed explicitly: when omitted, the Hermes host applies
+    its own auxiliary-call default rather than leaving the request unbounded.
+    """
+    raw = ctx.get_config("review_timeout_seconds", _DEFAULT_REVIEW_TIMEOUT_SECONDS)
+    if type(raw) is not int or not 10 <= raw <= 3600:
+        return float(_DEFAULT_REVIEW_TIMEOUT_SECONDS)
+    return float(raw)
+
+
+def read_review_max_tokens(ctx: PluginContext) -> int:
+    """Per-reviewer requested output-token budget; an invalid setting falls back to the default.
+
+    The default bounds ordinary findings output. Reasoning models spend thinking
+    tokens from the same completion budget, so operators running those routes raise
+    this to leave room for the findings JSON after the thinking block.
+    """
+    raw = ctx.get_config("review_max_tokens", _DEFAULT_REVIEW_MAX_TOKENS)
+    if type(raw) is not int or not 256 <= raw <= 16384:
+        return _DEFAULT_REVIEW_MAX_TOKENS
+    return raw
+
+
 _SUGGEST = (
     "Mode=suggest. When a substantial design draft is ready, before implementation, "
     "suggest EGM once and wait for the user to request review. Use automatic=false. "
@@ -207,7 +237,12 @@ def register(ctx: PluginContext) -> None:
                     }
                 )
         try:
-            report = await run_review(ctx.llm, request)
+            report = await run_review(
+                ctx.llm,
+                request,
+                timeout_seconds=read_review_timeout(ctx),
+                max_output_tokens=read_review_max_tokens(ctx),
+            )
             return json.dumps({**report, "automatic": automatic}, ensure_ascii=True)
         except Exception:
             return json.dumps(
