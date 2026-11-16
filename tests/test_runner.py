@@ -69,6 +69,34 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("tools", call)
         self.assertEqual(result["usage"]["total_tokens"], 90)
 
+    async def test_configured_token_budget_reaches_every_reviewer_request(self) -> None:
+        llm = FakeLlm()
+        request = review.ReviewRequest.parse(
+            {
+                "target": "spec",
+                "documents": [{"id": "spec", "text": "Deliver webhooks."}],
+            }
+        )
+        result = await review.run_review(llm, request, max_output_tokens=8192)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(len(llm.calls), 3)
+        for call in llm.calls:
+            self.assertEqual(call["max_tokens"], 8192)
+
+    async def test_configured_timeout_reaches_every_reviewer_request(self) -> None:
+        llm = FakeLlm()
+        request = review.ReviewRequest.parse(
+            {
+                "target": "spec",
+                "documents": [{"id": "spec", "text": "Deliver webhooks."}],
+            }
+        )
+        result = await review.run_review(llm, request, timeout_seconds=600)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(len(llm.calls), 3)
+        for call in llm.calls:
+            self.assertEqual(call["timeout"], 600)
+
     async def test_identical_findings_are_merged_without_another_model_call(self) -> None:
         from test_findings import finding, request
 

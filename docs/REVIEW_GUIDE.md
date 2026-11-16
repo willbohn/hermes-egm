@@ -104,8 +104,10 @@ requesting a provider override or reading credentials. Configured host fallbacks
 and provider data policies still apply. Local inference remains local only when
 the effective route and any fallbacks are local.
 
-The plugin requests at most 2,400 output tokens per reviewer, sets a 90-second
-provider timeout and stops awaiting the call after 95 seconds. It does not retry
+The plugin requests at most 2,400 output tokens per reviewer by default
+(configurable via `review_max_tokens`, 256–16384), sets a 90-second
+provider timeout by default (configurable via `review_timeout_seconds`, 10–3600)
+and stops awaiting the call five seconds later. It does not retry
 or repair responses. Hermes may perform its own retries or fallbacks, and stopping
 the wait may not cancel work already running at a provider. These limits bound the
 plugin's requests, not the final bill.

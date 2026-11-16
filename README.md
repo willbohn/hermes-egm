@@ -162,8 +162,12 @@ provider/model and token usage.
 
 Bounds per invocation: 1–8 documents; 48,000 UTF-8 bytes for the serialized snapshot;
 1–3 distinct lenses; at most 8 findings per reviewer; 2,400 requested output tokens
-per reviewer. Requests run concurrently, with a 90-second provider timeout and
-95-second coroutine deadline. The plugin does not retry or auto-repair. Hermes may
+per reviewer by default, configurable via `review_max_tokens` (integer 256–16384;
+reasoning models spend thinking tokens from this budget).
+Requests run concurrently, with a 90-second provider timeout and
+95-second coroutine deadline by default, configurable via the
+`review_timeout_seconds` setting (integer 10–3600; invalid values fall back to 90).
+The plugin does not retry or auto-repair. Hermes may
 apply its own provider retries/fallbacks; cancellation can stop waiting without
 aborting an already-running provider operation. These are not hard monetary caps.
 Usage may omit failed calls. Repeated review invocations consume more usage.

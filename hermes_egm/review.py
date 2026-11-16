@@ -292,7 +292,13 @@ def validate_findings(parsed: object, request: ReviewRequest, lens: Lens) -> lis
     return accepted
 
 
-async def _review_one(llm: Llm, request: ReviewRequest, lens: Lens) -> ReviewerReport:
+async def _review_one(
+    llm: Llm,
+    request: ReviewRequest,
+    lens: Lens,
+    timeout_seconds: float = 90.0,
+    max_output_tokens: int = 2400,
+) -> ReviewerReport:
     result: ReviewerReport = {
         "lens": lens,
         "status": "failed",
@@ -310,11 +316,11 @@ async def _review_one(llm: Llm, request: ReviewRequest, lens: Lens) -> ReviewerR
                 json_schema=FINDINGS_SCHEMA,
                 schema_name="egm_findings",
                 system_prompt=SYSTEM_PROMPT,
-                max_tokens=2400,
-                timeout=90,
+                max_tokens=max_output_tokens,
+                timeout=timeout_seconds,
                 purpose=f"egm.review.{lens}",
             ),
-            timeout=95,
+            timeout=timeout_seconds + 5.0,
         )
         result["provider"], result["model"] = reply.provider, reply.model
         result["usage"] = {
@@ -353,10 +359,20 @@ def merge_findings(reviewers: list[ReviewerReport]) -> list[Finding]:
     return list(merged.values())
 
 
-async def run_review(llm: Llm, request: ReviewRequest) -> ReviewReport:
+async def run_review(
+    llm: Llm,
+    request: ReviewRequest,
+    timeout_seconds: float = 90.0,
+    max_output_tokens: int = 2400,
+) -> ReviewReport:
     """Run at most three independent requests; no retries, tools, file access or repairs."""
     reviewers = list(
-        await asyncio.gather(*(_review_one(llm, request, lens) for lens in request.lenses))
+        await asyncio.gather(
+            *(
+                _review_one(llm, request, lens, timeout_seconds, max_output_tokens)
+                for lens in request.lenses
+            )
+        )
     )
     completed = sum(reviewer["status"] == "complete" for reviewer in reviewers)
     findings = merge_findings(reviewers)
