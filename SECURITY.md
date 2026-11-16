@@ -1,6 +1,6 @@
 # Security
 
-Supported scope: the current 0.2.x implementation. Reviewers receive explicit text
+Supported scope: the current 0.3.x implementation. Reviewers receive explicit text
 snapshots through Hermes's host-owned LLM route. They have no tools. The plugin has
 no custom network client, credential reader, project-file reader/writer, background
 process or self-updater. Installed Python plugins remain trusted code, not OS sandboxes.
