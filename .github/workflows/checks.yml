@@ -46,6 +46,8 @@ jobs:
           .venv/bin/ruff check hermes_egm tests __init__.py
           .venv/bin/ruff format --check hermes_egm tests __init__.py
           .venv/bin/mypy -p hermes_egm
+      - name: Test upstream report updates
+        run: node --test .github/upstream-monitor.test.cjs
 
   host:
     name: Pinned Hermes

@@ -36,6 +36,29 @@ against this revision. This pin does not prove every build above the manifest's
 minimum version is compatible. CI run logs are the current verification record;
 the integration results below describe the earlier release environment.
 
+## Upstream monitoring
+
+The [weekly workflow](.github/workflows/upstream-monitoring.yml) resolves current
+Hermes `main` to an exact commit, then runs the same isolated validation and
+registration checks. It runs Mondays at 03:23 UTC and supports manual dispatch.
+It is not a required PR check: an upstream regression does not block unrelated
+changes against the pinned host. There are no model credentials or live calls.
+
+Results update one [maintenance issue](https://github.com/willbohn/hermes-egm/issues/7),
+including failures, the latest Hermes release, and a Google EGM comparison link.
+The reporter runs separately from upstream code with only contents-read and
+issues-write permissions. It updates a dedicated bot comment, never the issue
+body or maintainer comments, so concurrent note edits cannot be overwritten.
+Run `node --test .github/upstream-monitor.test.cjs` to test report updates locally.
+
+Triage Hermes API, storage and LLM behavior first. For Google EGM, review changes
+to methodology, reviewer contracts, validation and security for applicability;
+this project is not a source mirror. Its initial comparison baseline is the last
+upstream commit before the v0.2.0 release date, not a claim that all earlier work
+was reviewed. After triage, advance `GOOGLE_BASELINE` in
+`.github/upstream-monitor.cjs` through a PR. Until then the full outstanding range
+stays linked. No host pin, dependency, prompt or source updates happen automatically.
+
 ## Recorded integration checks for v0.2.0
 
 | Check | Recorded result |
