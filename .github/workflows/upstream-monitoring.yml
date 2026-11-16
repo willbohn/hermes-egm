@@ -1,0 +1,58 @@
+name: Upstream monitoring
+
+on:
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-monitoring
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.host.outputs.sha }}
+    steps:
+      - id: host
+        name: Resolve the current Hermes main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh api repos/NousResearch/hermes-agent/commits/main --jq .sha)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
+  compatibility:
+    name: Latest Hermes
+    needs: resolve
+    uses: ./.github/workflows/hermes-validation.yml
+    with:
+      hermes-ref: ${{ needs.resolve.outputs.sha }}
+
+  report:
+    if: always()
+    needs: [resolve, compatibility]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Update the maintenance issue
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
+          HERMES_SHA: ${{ needs.resolve.outputs.sha }}
+        with:
+          script: |
+            const { report } = require('./.github/upstream-monitor.cjs');
+            await report({ github, context, core });

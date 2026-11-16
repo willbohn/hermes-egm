@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Weekly validation against current Hermes main and an upstream maintenance report for Hermes and Google EGM, separate from required pinned-host checks.
+
 ## 0.3.0 (2026-11-16)
 
 ### Added
