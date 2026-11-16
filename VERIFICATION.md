@@ -15,12 +15,28 @@ After the [development setup](README.md#development-and-verification), run:
 hermes plugins validate "$PWD" --install-deps
 ```
 
-The unit suite contains 47 deterministic tests. It uses a fake model facade to
+The unit suite uses deterministic tests and a fake model facade to
 exercise input and output validation, request isolation, concurrency, failures,
 activation policy and persistent attempt limits. These tests do not measure the
 quality of a model's design advice.
 
-## Integration checks
+## Automated checks
+
+The [Checks workflow](.github/workflows/checks.yml) runs on pull requests and
+pushes to `main`. It runs the unit suite on Python 3.11 and 3.14, plus Ruff and
+strict mypy on Python 3.14. The reusable [Hermes validation workflow](.github/workflows/hermes-validation.yml)
+installs the pinned host's locked dependencies, validates the plugin and runs
+Plugin Doctor in a separate Hermes home without provider credentials. Doctor
+checks discovery, import and registration, not live model inference or automatic
+admission end to end.
+
+The host pin is Hermes v0.23.1, commit
+`3b421578588243f920886e6fe79a6faa87ea026e`. Local validation and Doctor passed
+against this revision. This pin does not prove every build above the manifest's
+minimum version is compatible. CI run logs are the current verification record;
+the integration results below describe the earlier release environment.
+
+## Recorded integration checks for v0.2.0
 
 | Check | Recorded result |
 | --- | --- |

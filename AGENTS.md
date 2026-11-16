@@ -19,6 +19,7 @@ Attribution and distribution details are in [NOTICE](NOTICE).
 - `hermes_egm/auto_store.py`: atomic automatic-attempt limits; no text/result storage.
 - `hermes_egm/review.py`: snapshot, model requests, validation and aggregation.
 - `tests/`: deterministic fake-provider unit tests; `examples/`: public demo input.
+- `.github/workflows/`: PR checks and reusable pinned-host validation; no model credentials.
 - `README.md`: data flow, usage, limits and development setup.
 - `docs/REVIEW_GUIDE.md`: implementation and data-flow guide; `VERIFICATION.md`: test coverage and integration checks.
 
@@ -30,6 +31,7 @@ From this repository root, after the README's development setup:
 .venv/bin/ruff format --check hermes_egm tests __init__.py
 .venv/bin/mypy -p hermes_egm
 hermes plugins validate "$PWD" --install-deps
+hermes plugins doctor "$PWD" --ci
 ```
 
 Use `mypy -p hermes_egm`: the repository's hyphenated name and loader `__init__.py`
