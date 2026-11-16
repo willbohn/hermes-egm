@@ -2,6 +2,7 @@
 
 import unittest
 from dataclasses import dataclass, field
+from unittest.mock import patch
 
 from hermes_egm import review
 
@@ -96,6 +97,29 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(llm.calls), 3)
         for call in llm.calls:
             self.assertEqual(call["timeout"], 600)
+
+    async def test_each_reviewer_deadline_is_five_seconds_after_provider_timeout(self) -> None:
+        request = review.ReviewRequest.parse(
+            {
+                "target": "spec",
+                "documents": [{"id": "spec", "text": "Deliver webhooks."}],
+            }
+        )
+        for timeout_seconds, deadline in ((None, 95), (10, 15), (600, 605), (3600, 3605)):
+            with self.subTest(timeout_seconds=timeout_seconds):
+                llm = FakeLlm()
+                kwargs = {} if timeout_seconds is None else {"timeout_seconds": timeout_seconds}
+                with patch(
+                    "hermes_egm.review.asyncio.wait_for", wraps=review.asyncio.wait_for
+                ) as wait_for:
+                    result = await review.run_review(llm, request, **kwargs)
+                self.assertEqual(result["status"], "complete")
+                self.assertEqual(len(llm.calls), 3)
+                self.assertEqual(wait_for.await_count, 3)
+                self.assertEqual(
+                    [call.kwargs["timeout"] for call in wait_for.await_args_list],
+                    [deadline] * 3,
+                )
 
     async def test_identical_findings_are_merged_without_another_model_call(self) -> None:
         from test_findings import finding, request

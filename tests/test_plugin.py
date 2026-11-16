@@ -116,17 +116,29 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([call["timeout"] for call in calls], [600.0])
 
     async def test_invalid_review_timeout_falls_back_to_ninety_seconds(self):
-        for bad in (0, 5, 99999, "600", True, None):
+        for bad in (-1, 0, 5, 99999, "600", True, None):
             with self.subTest(value=bad):
                 calls = await self._run_one_lens({"review_timeout_seconds": bad})
                 self.assertEqual([call["timeout"] for call in calls], [90.0])
+
+    async def test_review_timeout_range_boundaries(self) -> None:
+        for value, expected in ((9, 90), (10, 10), (3600, 3600), (3601, 90)):
+            with self.subTest(value=value):
+                calls = await self._run_one_lens({"review_timeout_seconds": value})
+                self.assertEqual([call["timeout"] for call in calls], [expected])
 
     async def test_review_max_tokens_setting_reaches_reviewer_requests(self):
         calls = await self._run_one_lens({"review_max_tokens": 8192})
         self.assertEqual([call["max_tokens"] for call in calls], [8192])
 
     async def test_invalid_review_max_tokens_falls_back_to_2400(self):
-        for bad in (0, 100, 99999, "8192", True, None):
+        for bad in (-1, 0, 100, 99999, "8192", True, None):
             with self.subTest(value=bad):
                 calls = await self._run_one_lens({"review_max_tokens": bad})
                 self.assertEqual([call["max_tokens"] for call in calls], [2400])
+
+    async def test_review_max_tokens_range_boundaries(self) -> None:
+        for value, expected in ((255, 2400), (256, 256), (16384, 16384), (16385, 2400)):
+            with self.subTest(value=value):
+                calls = await self._run_one_lens({"review_max_tokens": value})
+                self.assertEqual([call["max_tokens"] for call in calls], [expected])
