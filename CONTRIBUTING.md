@@ -19,12 +19,27 @@ AI-assisted contributions are welcome. Disclose material AI assistance in the
 pull request and describe the checks performed. This implementation was developed
 with Hermes Agent assistance.
 
+## Continuous integration
+
+Pull requests run unit tests on Python 3.11 and 3.14, Ruff, strict mypy, and
+validation/registration against a pinned Hermes host. No provider credentials or
+live model calls are used in CI. Keep action references pinned to full commit
+SHAs. Dependabot checks development tools and Actions weekly; updates still need
+passing checks and review. Host pin changes are reviewed separately.
+
 ## Releases and catalog updates
 
 Release tags, the plugin manifest and catalog entries must describe the same
 source version. Catalog entries use a full commit pin and matching capabilities,
 compatibility metadata and artwork links. Validate the pinned source before
 submitting an entry or updating an existing submission.
+
+Prepare the manifest version and changelog in a pull request. After its checks
+pass and it merges, publish a tag and release at that exact commit. Include an
+immutable install command in the release notes. For changes to reviewer requests,
+run a bounded manual live-model smoke test with public sample input; CI's fake
+provider is not evidence of live inference. Update the catalog in a separate
+upstream pull request, never by moving an existing release tag.
 
 Follow the current [Hermes catalog submission guide](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/catalog-submission).
 Catalog review and merging are handled by Hermes maintainers.

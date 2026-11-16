@@ -1,0 +1,41 @@
+name: Hermes validation
+
+on:
+  workflow_call:
+    inputs:
+      hermes-ref:
+        description: Hermes source revision to validate against
+        type: string
+        default: '3b421578588243f920886e6fe79a6faa87ea026e' # v0.23.1
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Plugin validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: plugin
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: NousResearch/hermes-agent
+          # Only trusted workflow callers select this public host revision; no secrets are supplied.
+          ref: ${{ inputs.hermes-ref }}
+          path: host
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - name: Install the host's locked dependencies
+        working-directory: host
+        run: uv sync --frozen --no-default-groups --python 3.14
+      - name: Validate and probe registration without model calls
+        working-directory: host
+        env:
+          HERMES_HOME: ${{ runner.temp }}/hermes-egm-home
+        run: |
+          .venv/bin/hermes plugins validate "$GITHUB_WORKSPACE/plugin" --install-deps
+          .venv/bin/hermes plugins doctor "$GITHUB_WORKSPACE/plugin" --ci
