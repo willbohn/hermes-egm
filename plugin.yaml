@@ -1,5 +1,5 @@
 name: hermes-egm
-version: "0.3.0"
+version: "0.4.0"
 description: "Fresh-context, tool-free design reviews with checked source evidence and EGM workflow skills."
 author: "William Bohn and Hermes Agent"
 license: Apache-2.0

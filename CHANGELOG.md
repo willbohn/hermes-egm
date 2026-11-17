@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0 (2026-11-17)
+
 ### Added
 
 - Weekly validation against current Hermes main and an upstream maintenance report for Hermes and Google EGM, separate from required pinned-host checks.
