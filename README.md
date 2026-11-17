@@ -24,8 +24,9 @@ upstream reviewer prompts are not bundled. See [NOTICE](NOTICE).
 - **A native tool, not just prompts:** bounded parallel review, local output validation,
   exact source-line/quote checks, a reproducible snapshot fingerprint, exact-duplicate
   merging, and explicit incomplete/error states.
-- **Three lenses:** comprehension (missing assumptions), design (complexity and risks),
-  and readiness (contracts, implementation fit and tests). Choose one or all three.
+- **Three lenses:** target-only comprehension with a short paraphrase and self-containment
+  findings; design (simplicity, alternatives and risks); and readiness (implementation
+  decisions, contracts and tests). Choose one or all three.
 - **Seven optional skills:** `egm-brainstorm`, `egm-draft`, `egm-review`, `egm-resolve`,
   `egm-review-loop`, `egm-drift-report`, and `egm-bootstrap`, under the `hermes-egm:` namespace.
 - **Selective activation:** `manual`, `suggest` (default), or project-scoped `auto`.
@@ -76,8 +77,9 @@ what to change; the review tool does not edit files.
 2. **Choose what crosses the boundary.** Supply the exact design and relevant source
    excerpts. The review tool does not open files or attach the earlier conversation.
 3. **Get fresh perspectives.** Each selected lens gets a separate, tool-free model
-   request: comprehension, design, or readiness. They use the active Hermes route,
-   not three independently trained models.
+   request. Comprehension sees only the target document; design and readiness also
+   see the selected supporting excerpts. They use the active Hermes route, not three
+   independently trained models.
 4. **Check the findings and decide.** The plugin validates output and checks quotes
    against the supplied text. You decide which advice to accept. A valid quote does
    not prove the reasoning, and an incomplete review is never a pass.
@@ -151,6 +153,20 @@ Reviewer runs return JSON with `status`, `outcome`, `automatic`, `snapshot_id`,
 source evidence and contributing lenses. Each reviewer includes host-reported
 provider/model and token usage.
 
+The comprehension reviewer also returns `paraphrase`: a nonblank string of at most
+1,200 characters describing the target's stated intent. The prompt asks for 2–4
+sentences; validation enforces type, nonblank text and length, not meaning or sentence
+count. Compare it with what you intended. Other lenses and failed reviewers have
+`paraphrase: null`. Findings keep their existing shape. A missing or malformed
+paraphrase rejects the entire comprehension response, even if its findings are valid.
+Like findings, the paraphrase is untrusted advice, not a certification.
+
+For a local output rejection, the reviewer's `validation_error` gives a safe code
+distinguishing an unavailable parsed response, invalid schema, unknown document,
+out-of-range line, or mismatched quote. It is `null` on success or host-call failure.
+See [diagnostic limits](docs/REVIEW_GUIDE.md#validation-diagnostics): a missing parsed
+value does not establish whether the model output or host parser was at fault.
+
 | Field | Meaning |
 | --- | --- |
 | `status: complete` | Every selected reviewer returned output that passed local validation. |
@@ -209,6 +225,9 @@ See [SECURITY.md](SECURITY.md) and [How Hermes EGM works](docs/REVIEW_GUIDE.md).
 
 Only the explicit snapshot crosses the model-call boundary. No draft conversation,
 reviewer discussion or previous findings are automatically appended.
+Comprehension receives only the target's ID and lines, with no supporting-source
+metadata or full-snapshot fingerprint. Design and readiness receive the full selected
+snapshot. The returned fingerprint still identifies the complete caller-supplied snapshot.
 
 `hermes_egm/plugin.py` registers the tool, skills and cache-safe routing section.
 `policy.py` validates settings and project scope; `auto_store.py` owns transactional

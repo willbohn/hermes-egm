@@ -24,14 +24,43 @@ The three review lenses have different jobs:
 
 | Lens | Focus |
 | --- | --- |
-| `comprehension` | Missing definitions, contradictions and unstated assumptions. |
-| `design` | Complexity, scope, trust boundaries and failure handling. |
-| `readiness` | Feasibility, interfaces and testable outcomes, checked against the supplied sources. |
+| `comprehension` | Target-only self-containment: paraphrase the stated goals, behavior and constraints, then find undefined terms, contradictions and unstated assumptions. |
+| `design` | Simplicity, scope and alternatives; justified trade-offs, material risks, trust boundaries, failure modes and mitigations. |
+| `readiness` | Concrete implementation decisions: interfaces/contracts, data flow, ownership, failure handling and testable acceptance criteria, checked against supplied sources. |
 
 A request can use one, two or all three lenses. Each gets a fresh call through the
 active Hermes model route. Different lenses do not imply different model families.
 
 ## What installation adds
+
+### Relationship to Google's EGM workflow
+
+The core pattern is shared: a context-rich author prepares a document, fresh
+reviewers challenge it without the drafting conversation, and the user decides
+what to change. Hermes EGM implements that pattern, not the complete
+[Google-originated review protocol](https://github.com/google/elephant-goldfish-model/blob/72d06f52a2482885d9a64bd24b291c6e8628942c/skills/egm-review/SKILL.md).
+
+Important differences:
+
+- Google EGM's full review has staged zoom-out, comprehension, design critique,
+  another zoom-out, and implementation-readiness checks against explicit document
+  standards. Hermes EGM runs three lens rubrics concurrently from one caller snapshot;
+  its explicit criteria do not enforce those standards or split feature and implementation ranges.
+- Like Google's comprehension stage, Hermes's comprehension lens now reads the target
+  alone and returns a short paraphrase plus findings. It remains a concurrent request,
+  not a stage whose result controls later reviews. Design and readiness also receive
+  the selected supporting sources, but never the comprehension result.
+- Google reviewers can inspect referenced sources through read-only tools. Hermes
+  reviewers have no tools and depend on caller-selected excerpts. Literal citation
+  checks add traceability, but cannot establish source completeness or reasoning quality.
+- The seven Hermes skills are lightweight workflow guidance, not copies of Google's
+  seven-lens brainstorming, recursive bootstrap, report synthesis or staged orchestration.
+  Review loops require an explicit user budget; failed calls are not retried automatically.
+
+Use this plugin for bounded fresh-context critique. A completed Hermes review is
+not evidence that Google's full protocol ran or that a design is ready to implement.
+
+### Registered components
 
 The [manifest](../plugin.yaml) declares one tool, `egm_review`, and three activation
 settings. The [entrypoint](../__init__.py) loads the registration function in
@@ -93,12 +122,18 @@ configured provider's data-use policy.
 [`run_review` and `_review_one`](../hermes_egm/review.py) make one concurrent
 `ctx.llm.acomplete_structured` request for each selected lens. Each request contains:
 
-- The same target and document lines.
-- A reviewer instruction and the selected lens's rubric.
-- A JSON schema for the findings.
+- The target and document lines within that lens's scope (below).
+- A reviewer instruction and the selected lens's explicit criteria.
+- A JSON schema for findings, plus a required paraphrase for comprehension only.
 - Output and timeout limits, plus a purpose label for the host.
 
-No prior conversation, memory, reviewer discussion or tool list is attached.
+[`ReviewRequest.for_lens`](../hermes_egm/review.py) restricts comprehension to the
+target document's ID and lines. Supporting text, supporting IDs and the full-snapshot
+fingerprint are not sent through any request field. Design and readiness retain the
+full selected target/source payload. The aggregate fingerprint remains unchanged:
+it identifies the complete caller snapshot, not a single lens's subset.
+
+No prior conversation, memory, reviewer discussion, previous result or tool list is attached.
 Hermes owns authentication and routing; the plugin uses the active route without
 requesting a provider override or reading credentials. Configured host fallbacks
 and provider data policies still apply. Local inference remains local only when
@@ -119,10 +154,12 @@ explanation, suggested action and 1–3 evidence references. Each reviewer can r
 at most eight findings.
 
 [`validate_findings`](../hermes_egm/review.py) checks the full response locally,
-including exact field names, permitted values and text lengths. Every evidence
-reference must identify a supplied document, a valid integer line number and a
-nonempty quote that occurs on that line. If any finding fails validation, that
-reviewer's entire response is rejected.
+including exact lens-specific field names, permitted values and text lengths.
+Comprehension requires `paraphrase` and `findings`; design and readiness still
+require only `findings`. Every evidence reference must identify a document supplied
+to that lens (only the target for comprehension), a valid integer line number and
+a nonempty quote that occurs on that line. If any field, finding or citation fails
+validation, that reviewer's entire response is rejected, including its paraphrase.
 
 This establishes that quoted evidence exists in the snapshot. It does not decide
 whether the reasoning follows from the quote. Reviewers can still misunderstand
@@ -137,6 +174,15 @@ active HTML. The tool has no action path that applies a suggested change.
 
 The tool returns JSON with per-reviewer results, merged findings, a snapshot
 fingerprint and host-reported provider, model and token usage.
+
+Each reviewer has an additive `paraphrase` field: a validated string for completed
+comprehension, `null` for other lenses or any failure. Existing finding fields and
+duplicate merging are unchanged. A paraphrase alone never completes a review.
+The comprehension prompt asks for 2–4 sentences (at most 1,200 characters), without
+inventing missing context. Local validation requires a string with nonblank text
+and at most 1,200 characters; it does not enforce sentence count, verify semantic
+accuracy or citation-check the paraphrase. Treat it as untrusted prose and compare
+it with the intended design, not as approval or a replacement for cited findings.
 
 Runner reports and automatic-policy denials include `automatic`, which identifies
 policy-initiated calls. Invalid-input and host-error responses can omit this marker.
@@ -160,6 +206,31 @@ Reviewer failures use short categories such as `invalid_response`, `timeout` or
 `provider_error`. Raw exception messages and rejected model output are not copied
 into the report. Token totals include usage returned by the host; failed calls
 can consume usage that is not represented in those totals.
+
+### Validation diagnostics
+
+For `invalid_response`, the per-reviewer `validation_error` field identifies the
+first local rejection using a fixed code, without document IDs, quotes, field values
+or exception text. The existing `error` message and failure statuses are preserved.
+
+| Code | Observed condition |
+| --- | --- |
+| `parsed_unavailable` | The host returned `parsed: None`. |
+| `schema_invalid` | Fields, types, counts, permitted values or text bounds failed local checks. |
+| `unknown_document` | An evidence reference names a document outside the lens's supplied scope. |
+| `line_out_of_range` | An integer evidence line is outside the source's 1-based range. |
+| `quote_mismatch` | A nonblank, length-bounded quote does not occur literally on the cited line. |
+
+`validation_error` is `null` on success, timeout or a host-call exception. A host
+schema-validation exception can surface as `provider_error` before EGM receives a
+reply; it is not necessarily a provider outage. Arbitrary host exception messages
+are not parsed to guess a more specific cause.
+
+`parsed_unavailable` does **not** prove malformed JSON: a host parsing limitation
+or a JSON `null` response can also produce `None`. EGM does not inspect, log, repair
+or reparse the raw reply. Every local validation failure still rejects the entire
+reviewer's findings and leaves the overall review incomplete. These diagnostics
+identify rejection conditions, not the root cause of unavailable historical replies.
 
 ## Activation modes
 
@@ -243,6 +314,8 @@ The main test areas are:
 | [`test_inputs.py`](../tests/test_inputs.py), [`test_review.py`](../tests/test_review.py) | Snapshot input validation and fingerprints. |
 | [`test_findings.py`](../tests/test_findings.py) | Output shape, source IDs, line numbers and literal quotes. |
 | [`test_runner.py`](../tests/test_runner.py) | Concurrent calls, duplicate merging, failures and cancellation. |
+| [`test_fidelity.py`](../tests/test_fidelity.py) | Target-only comprehension, explicit criteria, bounded paraphrases, lens-specific citations and whole-response rejection with synthetic replies. |
+| [`test_validation_diagnostics.py`](../tests/test_validation_diagnostics.py) | Synthetic parsing/validation failures, safe diagnostic codes, literal line boundaries and public-handler serialization. |
 | [`test_policy.py`](../tests/test_policy.py) | Settings and canonical project scope. |
 | [`test_activation.py`](../tests/test_activation.py) | Activation guidance and automatic/manual behavior. |
 | [`test_auto_store.py`](../tests/test_auto_store.py) | Persistent budgets, duplicate handling, concurrent reservations and revocation. |

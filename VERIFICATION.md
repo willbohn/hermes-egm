@@ -105,6 +105,13 @@ revocation, concurrent reservations, persistent limits, repeated enrollment and
 storage failure. They also check that host-supplied parent context is not forwarded
 to reviewers and that rejected input starts no model requests.
 
+Offline fidelity tests check target-only comprehension across every request field,
+including exclusion of supporting-source IDs and snapshot fingerprints. They cover
+bounded paraphrases, malformed/missing output, lens-specific citations, whole-response
+rejection and partial/failed outcomes. Design/readiness keep their full selected
+snapshot and findings-only model-output contract. These synthetic checks establish
+request/validation behavior, not live paraphrase accuracy or review quality.
+
 Source inspection of the tested Hermes host confirmed that structured requests
 build fresh messages from the supplied prompts, schema and inputs. The plugin
 performs its own output validation, including when the host's optional

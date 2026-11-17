@@ -5,6 +5,16 @@
 ### Added
 
 - Weekly validation against current Hermes main and an upstream maintenance report for Hermes and Google EGM, separate from required pinned-host checks.
+- Comprehension returns a required short paraphrase alongside findings, exposed as an additive per-reviewer `paraphrase` field. Nonblank text and the 1,200-character bound are validated locally; any invalid output rejects the whole response.
+
+### Fixed
+
+- Local reviewer-output rejections now include a safe `validation_error` code for unavailable parsed output, schema violations and source-citation failures. Strict citation validation, whole-response rejection and incomplete status are unchanged; raw replies are not logged or repaired.
+
+### Changed
+
+- Comprehension receives and cites only the target document, without supporting-source text or metadata. Design/readiness retain the full selected snapshot; caller inputs, finding fields and aggregate snapshot identity are unchanged.
+- Review criteria now explicitly cover self-containment, simplicity and alternatives, risks and mitigations, and concrete implementation decisions. The concurrent lightweight workflow remains distinct from Google's staged EGM protocol.
 
 ## 0.3.0 (2026-11-16)
 

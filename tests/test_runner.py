@@ -22,13 +22,21 @@ class Reply:
     usage: Usage = field(default_factory=Usage)
 
 
+def parsed_reply(purpose, findings=None):
+    """Synthetic output matching the assigned lens, never a live model response."""
+    parsed = {"findings": [] if findings is None else findings}
+    if purpose == "egm.review.comprehension":
+        parsed["paraphrase"] = "The design proposes delivering webhooks."
+    return parsed
+
+
 class FakeLlm:
     def __init__(self) -> None:
         self.calls = []
 
     async def acomplete_structured(self, **kwargs):
         self.calls.append(kwargs)
-        return Reply()
+        return Reply(parsed=parsed_reply(kwargs["purpose"]))
 
 
 class RunnerTests(unittest.IsolatedAsyncioTestCase):
@@ -127,7 +135,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         class FindingLlm(FakeLlm):
             async def acomplete_structured(self, **kwargs):
                 self.calls.append(kwargs)
-                return Reply(parsed={"findings": [finding()]})
+                return Reply(parsed=parsed_reply(kwargs["purpose"], [finding()]))
 
         llm = FindingLlm()
         result = await review.run_review(llm, request())
@@ -145,7 +153,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             async def acomplete_structured(self, **kwargs):
                 if kwargs["purpose"].endswith("design"):
                     raise RuntimeError("SENSITIVE_EXCEPTION_PAYLOAD")
-                return Reply()
+                return Reply(parsed=parsed_reply(kwargs["purpose"]))
 
         result = await review.run_review(FailingLlm(), request())
         self.assertEqual(result["status"], "partial")
@@ -186,7 +194,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                 if len(self.calls) == 3:
                     self.ready.set()
                 await asyncio.wait_for(self.ready.wait(), timeout=1)
-                return Reply()
+                return Reply(parsed=parsed_reply(kwargs["purpose"]))
 
         result = await review.run_review(ConcurrentLlm(), request())
         self.assertEqual(result["status"], "complete")
