@@ -6,14 +6,31 @@ import asyncio
 import hashlib
 import json
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Literal, Protocol, TypedDict, cast
 
 Lens = Literal["comprehension", "design", "readiness"]
 LENSES: tuple[Lens, ...] = ("comprehension", "design", "readiness")
 
 
+class ValidationCode(StrEnum):
+    """Closed diagnostic vocabulary; never include model or source text."""
+
+    PARSED_UNAVAILABLE = "parsed_unavailable"
+    SCHEMA_INVALID = "schema_invalid"
+    UNKNOWN_DOCUMENT = "unknown_document"
+    LINE_OUT_OF_RANGE = "line_out_of_range"
+    QUOTE_MISMATCH = "quote_mismatch"
+
+
 class InvalidReview(ValueError):
     """Input or model output does not meet the review contract."""
+
+    def __init__(
+        self, message: str, *, code: ValidationCode = ValidationCode.SCHEMA_INVALID
+    ) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def object_value(value: object) -> dict[str, object]:
@@ -94,6 +111,14 @@ class ReviewRequest:
             )
         return request
 
+    def for_lens(self, lens: Lens) -> ReviewRequest:
+        """Comprehension tests the target's self-containment, without supporting sources."""
+        if lens != "comprehension":
+            return self
+        return ReviewRequest(
+            self.target, tuple(doc for doc in self.documents if doc.id == self.target), (lens,)
+        )
+
     def payload(self) -> str:
         return json.dumps(
             {
@@ -167,10 +192,12 @@ class ReviewerReport(TypedDict):
     lens: Lens
     status: Literal["complete", "failed"]
     error: str
+    validation_error: ValidationCode | None
     provider: str
     model: str
     usage: TokenUsage
     findings: list[Finding]
+    paraphrase: str | None
 
 
 class ReviewReport(TypedDict):
@@ -221,11 +248,39 @@ FINDINGS_SCHEMA: dict[str, object] = {
     },
 }
 
+PARAPHRASE_MAX_CHARS = 1200
+COMPREHENSION_SCHEMA: dict[str, object] = {
+    **FINDINGS_SCHEMA,
+    "required": ["paraphrase", "findings"],
+    "properties": {
+        **cast(dict[str, object], FINDINGS_SCHEMA["properties"]),
+        "paraphrase": {"type": "string", "minLength": 1, "maxLength": PARAPHRASE_MAX_CHARS},
+    },
+}
+
 # These are original, concise EGM-inspired rubrics, not copied upstream personas.
 RUBRICS: dict[Lens, str] = {
-    "comprehension": "Find missing definitions, contradictions and unstated assumptions.",
-    "design": "Challenge complexity, scope, trust boundaries and failure handling.",
-    "readiness": "Check feasibility against supplied sources, contracts and testable outcomes.",
+    "comprehension": (
+        "Test self-containment using only the target document. First write a short paraphrase "
+        f"(2–4 sentences, at most {PARAPHRASE_MAX_CHARS} characters) of its stated goals, proposed "
+        "behavior and constraints, without filling gaps. Then find undefined terms, contradictions "
+        "and unstated assumptions that prevent understanding from the target alone. Cite only "
+        "target lines; flag referenced context that is needed but not explained."
+    ),
+    "design": (
+        "Assess simplicity and alternatives: is the scope necessary, can a simpler approach meet "
+        "the stated goals, and are the chosen trade-offs justified? Identify material risks, "
+        "trust-boundary failures and failure modes; check whether mitigations and accepted "
+        "residual risks are explicit. Ground critique in the target and supplied supporting "
+        "sources; do not invent requirements."
+    ),
+    "readiness": (
+        "Check implementation decisions against the target and supplied sources: are "
+        "interfaces/contracts, data flow, ownership, failure handling and testable acceptance "
+        "criteria concrete enough to implement without guessing? Identify unresolved choices "
+        "and feasibility constraints; check tests for important risks and error paths. "
+        "Do not infer missing implementation facts."
+    ),
 }
 SYSTEM_PROMPT = (
     "You are an independent Goldfish design reviewer. You have no tools or prior conversation. "
@@ -242,13 +297,22 @@ SYSTEM_PROMPT = (
 
 def validate_findings(parsed: object, request: ReviewRequest, lens: Lens) -> list[Finding]:
     """Reject the entire reviewer result if any finding or evidence is malformed."""
+    if parsed is None:
+        raise InvalidReview(
+            "No parsed response is available.", code=ValidationCode.PARSED_UNAVAILABLE
+        )
     data = object_value(parsed)
-    if set(data) != {"findings"}:
-        raise InvalidReview("Response needs exactly one findings field.")
+    fields = {"paraphrase", "findings"} if lens == "comprehension" else {"findings"}
+    if set(data) != fields:
+        raise InvalidReview("Response fields do not match the lens contract.")
+    if lens == "comprehension":
+        paraphrase = text_value(data["paraphrase"])
+        if not paraphrase.strip() or len(paraphrase) > PARAPHRASE_MAX_CHARS:
+            raise InvalidReview("Paraphrase is blank or too long.")
     items = array_value(data["findings"])
     if len(items) > 8:
         raise InvalidReview("Too many findings.")
-    sources = {doc.id: doc.lines for doc in request.documents}
+    sources = {doc.id: doc.lines for doc in request.for_lens(lens).documents}
     accepted: list[Finding] = []
     for item in items:
         finding = object_value(item)
@@ -272,12 +336,22 @@ def validate_findings(parsed: object, request: ReviewRequest, lens: Lens) -> lis
             document = text_value(reference["document"])
             quote = text_value(reference["quote"])
             line = reference["line"]
-            if type(line) is not int or document not in sources:
-                raise InvalidReview("Unknown source or noninteger line.")
+            if type(line) is not int:
+                raise InvalidReview("Evidence line must be an integer.")
+            if document not in sources:
+                raise InvalidReview("Unknown source.", code=ValidationCode.UNKNOWN_DOCUMENT)
             if not 1 <= line <= len(sources[document]):
-                raise InvalidReview("Evidence line is outside the supplied source.")
-            if not quote.strip() or len(quote) > 400 or quote not in sources[document][line - 1]:
-                raise InvalidReview("Evidence quote does not occur on that source line.")
+                raise InvalidReview(
+                    "Evidence line is outside the supplied source.",
+                    code=ValidationCode.LINE_OUT_OF_RANGE,
+                )
+            if not quote.strip() or len(quote) > 400:
+                raise InvalidReview("Evidence quote is blank or too long.")
+            if quote not in sources[document][line - 1]:
+                raise InvalidReview(
+                    "Evidence quote does not occur on that source line.",
+                    code=ValidationCode.QUOTE_MISMATCH,
+                )
             evidence.append({"document": document, "line": line, "quote": quote})
         accepted.append(
             {
@@ -299,22 +373,25 @@ async def _review_one(
     timeout_seconds: float = 90.0,
     max_output_tokens: int = 2400,
 ) -> ReviewerReport:
+    scoped_request = request.for_lens(lens)
     result: ReviewerReport = {
         "lens": lens,
         "status": "failed",
         "error": "",
+        "validation_error": None,
         "provider": "",
         "model": "",
         "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
         "findings": [],
+        "paraphrase": None,
     }
     try:
         reply = await asyncio.wait_for(
             llm.acomplete_structured(
                 instructions=RUBRICS[lens],
-                input=[{"type": "text", "text": request.payload()}],
-                json_schema=FINDINGS_SCHEMA,
-                schema_name="egm_findings",
+                input=[{"type": "text", "text": scoped_request.payload()}],
+                json_schema=COMPREHENSION_SCHEMA if lens == "comprehension" else FINDINGS_SCHEMA,
+                schema_name="egm_comprehension" if lens == "comprehension" else "egm_findings",
                 system_prompt=SYSTEM_PROMPT,
                 max_tokens=max_output_tokens,
                 timeout=timeout_seconds,
@@ -328,12 +405,21 @@ async def _review_one(
             "output_tokens": reply.usage.output_tokens,
             "total_tokens": reply.usage.total_tokens,
         }
-        result["findings"] = validate_findings(reply.parsed, request, lens)
-        result["status"] = "complete"
-    except InvalidReview:
-        result["error"] = (
-            "invalid_response: reviewer output failed local validation; no findings accepted."
-        )
+        parsed = reply.parsed
+        try:
+            findings = validate_findings(parsed, scoped_request, lens)
+            paraphrase = (
+                text_value(object_value(parsed)["paraphrase"]) if lens == "comprehension" else None
+            )
+        except InvalidReview as exc:
+            result["error"] = (
+                "invalid_response: reviewer output failed local validation; no findings accepted."
+            )
+            result["validation_error"] = exc.code
+        else:
+            result["findings"] = findings
+            result["paraphrase"] = paraphrase
+            result["status"] = "complete"
     except TimeoutError:
         result["error"] = "timeout: reviewer exceeded its deadline; no retry was started."
     except Exception:
