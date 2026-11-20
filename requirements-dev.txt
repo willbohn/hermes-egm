@@ -1,7 +1,7 @@
 # Tooling only; the runtime plugin has no third-party Python dependencies.
 # Pin the full development dependency set so CI does not float transitive versions.
-ruff==0.14.14
-mypy==1.18.2
+ruff==0.17.5
+mypy==2.4.1
 mypy-extensions==1.2.0
 pathspec==1.1.1
 typing-extensions==4.16.0
