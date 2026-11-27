@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Read-only Semgrep CI for new pull-request findings and full default-branch scans.
+
 ## 0.4.0 (2026-11-17)
 
 ### Added
