@@ -27,6 +27,9 @@ live model calls are used in CI. Keep action references pinned to full commit
 SHAs. Dependabot checks development tools and Actions weekly; updates still need
 passing checks and review. Host pin changes are reviewed separately.
 
+Semgrep checks new pull-request findings and runs full default-branch scans without
+provider credentials or a Semgrep account. Findings and scan errors fail the check.
+
 ## Releases and catalog updates
 
 Release tags, the plugin manifest and catalog entries must describe the same

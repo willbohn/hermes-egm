@@ -270,3 +270,13 @@ Artwork sources, generation notes and export commands are in [assets/README.md](
 ## License
 
 Apache-2.0. AI-assisted implementation; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security scanning
+
+[Semgrep](.github/workflows/semgrep.yml) checks new findings in pull requests and runs full scans on the
+default branch, weekly, and on manual dispatch. Findings and scan errors fail the
+check. The pinned Community Edition scanner uses `p/ci` without an AppSec account;
+metrics, version checks, and tracing are disabled. Source and findings are not
+uploaded to Semgrep. This static check does not run the application or replace its
+tests. Review changes to ignore files and inline suppressions like other
+security-sensitive changes. Existing findings remain visible in full scans.
